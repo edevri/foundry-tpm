@@ -107,13 +107,13 @@ export function createProxyServer(deps: ProxyDeps): http.Server {
         `request ${id} UNEXPECTED Azure 429 (${kind}): local model admitted ${fmt(estimate.total)} tokens ` +
           `but Azure reports ${fmt(state.remainingTokens ?? NaN)} remaining; retry-after ${fmt(waitMs)}ms`,
       );
+      if (isRetryable(kind)) governor.pauseUntil(Date.now() + waitMs);
       if (!isRetryable(kind) || attempt >= config.maxInternal429Retries || Date.now() + waitMs > deadline) {
         log(`request ${id} passing 429 to client after ${attempt} internal retries`);
         res.writeHead(429, responseHeaders(upstream.headers));
         return void res.end(errorBody);
       }
       metrics.internal_retry_total++;
-      governor.pauseUntil(Date.now() + waitMs);
     }
   }
 

@@ -172,6 +172,22 @@ describe("governor proxy", () => {
     await waitFor(() => upstreamClosed);
   });
 
+  it("logs a completion when the client hangs up right after the final event (as Codex does)", async () => {
+    let upstreamClosed = false;
+    const { governor } = await setup((_req, res) => {
+      res.writeHead(200, { "content-type": "text/event-stream" });
+      res.write(`data: {"type":"response.completed","response":{"usage":{"input_tokens":10,"output_tokens":5}}}\n\n`);
+      res.on("close", () => (upstreamClosed = true));
+    });
+    const controller = new AbortController();
+    const response = await post(governor.url, responsesBody(10), { signal: controller.signal });
+    await response.body!.getReader().read();
+    controller.abort();
+    await waitFor(() => upstreamClosed);
+    await waitFor(() => governor.logs.some((l) => /completed 200 .*actual input 10/.test(l)));
+    assert.ok(!governor.logs.some((l) => /disconnected/.test(l)));
+  });
+
   it("answers 503 when the queue is full or the wait exceeds the limit", async () => {
     const { governor } = await setup((_req, res) => sseOk(res), {
       GOVERNOR_TPM_TARGET: "1000",

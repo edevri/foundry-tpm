@@ -168,11 +168,12 @@ export function createProxyServer(deps: ProxyDeps): http.Server {
         res.once("drain", () => upstream.resume());
       }
     });
-    upstream.on("end", () => {
-      res.end();
+    let reported = false;
+    const report = () => {
+      if (reported || !estimate) return;
+      reported = true;
       const seconds = ((Date.now() - startedAt) / 1000).toFixed(1);
       const actual = usage?.result();
-      if (!estimate) return;
       if (!actual) {
         log(`request ${id} completed ${upstream.statusCode} in ${seconds}s (no usage reported)`);
         return;
@@ -184,16 +185,21 @@ export function createProxyServer(deps: ProxyDeps): http.Server {
           `(estimated ${fmt(estimate.inputTokens)}, ratio ${ratio}), output ${fmt(actual.output)} ` +
           `(reserved ${fmt(estimate.outputTokens)})`,
       );
+    };
+    upstream.on("end", () => {
+      res.end();
+      report();
     });
     upstream.on("error", (error) => {
       log(`request ${id} upstream stream error: ${error.message}`);
       res.destroy(error);
     });
     res.on("close", () => {
-      if (!upstream.complete) {
-        log(`request ${id} client disconnected mid-stream; aborting upstream`);
-        upstream.destroy();
-      }
+      if (upstream.complete) return;
+      upstream.destroy();
+      // Codex hangs up as soon as it has the final event, before Azure closes the stream.
+      if (usage?.result()) report();
+      else log(`request ${id} client disconnected mid-stream; aborting upstream`);
     });
   }
 

@@ -1,0 +1,19 @@
+{
+  "name": "foundry-tpm",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local proxy that queues requests so concurrent Codex sessions share one Azure deployment's TPM budget",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "start": "node src/main.ts",
+    "test": "node --test 'test/**/*.test.ts'",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "typescript": "^7.0.2"
+  }
+}

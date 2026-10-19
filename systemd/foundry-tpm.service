@@ -1,0 +1,13 @@
+[Unit]
+Description=foundry-tpm Azure TPM governor
+After=network-online.target
+
+[Service]
+WorkingDirectory=/mnt/data/git/foundry-tpm
+EnvironmentFile=%h/.config/foundry-tpm/env
+ExecStart=%h/.local/share/vite-plus/bin/node src/main.ts
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target

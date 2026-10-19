@@ -125,6 +125,34 @@ describe("governor proxy", () => {
     assert.equal(upstream.requests.length, 4);
   });
 
+  it("keeps the shared cooldown when a rate-limit 429 cannot be retried", async () => {
+    for (const env of [
+      { MAX_INTERNAL_429_RETRIES: "0", MAX_QUEUE_WAIT_MS: "1000" },
+      { MAX_INTERNAL_429_RETRIES: "5", MAX_QUEUE_WAIT_MS: "100" },
+    ]) {
+      let calls = 0;
+      const { upstream, governor } = await setup((_req, res) => {
+        if (calls++ === 0) {
+          res.writeHead(429, { "retry-after-ms": "200", "content-type": "application/json" });
+          res.end('{"error":{"message":"token rate limit"}}');
+          return;
+        }
+        sseOk(res);
+      }, env);
+      const limited = await post(governor.url, responsesBody(10));
+      assert.equal(limited.status, 429);
+      await limited.text();
+      // Start a fresh session late enough that its own queue deadline permits the cooldown.
+      await sleep(120);
+      const next = await post(governor.url, responsesBody(10));
+      assert.equal(next.status, 200);
+      await next.text();
+      assert.ok(upstream.requests[1]!.at - upstream.requests[0]!.at >= 190,
+        "the next session must respect Retry-After even when the first cannot retry");
+      assert.equal(governor.metrics.internal_retry_total, 0);
+    }
+  });
+
   it("tightens the budget from Azure's remaining-tokens header", async () => {
     const { upstream, governor } = await setup((_req, res) => sseOk(res, { "x-ratelimit-remaining-tokens": "1000", "x-ratelimit-limit-tokens": "100000" }), {
       GOVERNOR_TPM_TARGET: "100000",
